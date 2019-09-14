@@ -113,7 +113,7 @@ def get_data(filePath, labelEncode=False, hotEncode=False, skewness=False):
 		    lbl = LabelEncoder() 
 		    lbl.fit(list(temp_df[i].values)) 
 		    temp_df[i] = lbl.transform(list(temp_df[i].values))
-		print('Data shape after preprocessing: {}'.format(temp_df.shape))
+	print('Data shape after preprocessing: {}'.format(temp_df.shape))
 
 	return temp_df,Y
 
