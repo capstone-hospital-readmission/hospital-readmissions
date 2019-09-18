@@ -3,54 +3,21 @@ import numpy as np
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder
 from scipy.stats import skew
 
-def metrics_table(y_test, y_estimate):
-    y_head=pd.DataFrame([pd.Series(y_estimate, index=y_test.index).sort_values()]).T
-    y_head.columns=['proba']
+def metrics_table( y_test, readmit_prob):
+    #readmit_prob = [i[1] for i in LR_up.predict_proba(x_test)]
+    quantile_ = pd.qcut(readmit_prob,10,labels=np.arange(1,11))
+    temp_dict = {'quantile':quantile_,'prob':readmit_prob,'Readmitted':y_test}
 
-    y_head.reset_index(inplace=True)
-    y_head.columns=['id','proba']
-
-    q=list(map(lambda x: x*y_head.shape[0]//10, list(range(1,11))))
-
-    y_head['quantile']=0
-    for i,x in enumerate(q):
-        if i==0:
-            y_head.loc[:x,'quantile']=i
-        else:
-            y_head.loc[q[i-1]:x, 'quantile']=i
-
-    min_proba = y_head.groupby('quantile')['proba'].min()
-    max_proba = y_head.groupby('quantile')['proba'].max()
-
-    pop = y_head.groupby('quantile')['id'].count()
-
-    y_true=y_test.reset_index()
-
-    y_true.columns=['id', 'readmitted']
-
-    y_head = pd.merge(y_true, y_head, how='left', left_on='id', right_on='id')
-
-    readmitted=y_head.groupby('quantile')['readmitted'].sum()
-    
-
-    result=pd.DataFrame(index=range(10))
-
-    result['quantile']=list(range(10))
-
-    result['pop']=pop
-
-    result['readmitted']=readmitted
-
-    result['min_proba']=min_proba
-    result['max_proba']=max_proba
-
-    result['readmit_pct']=readmitted/pop.sum()
-
-    result['avg_readmit']=readmitted.sum()/pop.sum()
-
-    result['lift']=result['readmit_pct']/result['avg_readmit']*10
-
-    return result
+    quan_table = pd.DataFrame(temp_dict).sort_values('quantile')
+    temp1 = quan_table.groupby('quantile')['prob'].agg(['count','min','max']).reset_index()
+    temp2 = quan_table.groupby(['quantile','Readmitted']).count().reset_index()
+    temp2 = temp2[temp2.Readmitted==1]
+    quan_table = pd.merge(temp2, temp1, how='inner',on ='quantile').drop('Readmitted',1).\
+                    rename({'prob': 'readmitted','count':'amount'}, axis=1)
+    quan_table = quan_table[quan_table.columns[[0,2,1,3,4]]]
+    quan_table['pct_readmitted'] = quan_table.readmitted/quan_table.amount
+    quan_table['lift'] = quan_table.pct_readmitted.apply(lambda x:10*x/quan_table.pct_readmitted.sum())
+    return quan_table
 
 def group_diabet(x):
     
@@ -58,13 +25,14 @@ def group_diabet(x):
     diag2=x['diag_2']
     diag3=x['diag_3']
     if ('250' in diag1) or ('250' in diag2) or ('250' in diag3):
-        return '1'
+        return 'Yes'
     else:
-        return '0'
+        return 'No'
 
-
-def map_coef(lr, enc, features, inverse_log):
-    
+def map_coef(lr, enc, df, inverse_log):
+    print(lr.coef_.shape)
+    print(sum([len(x) for x in enc.categories_]))
+    print(sum(len(np.unique(df[x])) for x in df.columns))
     coef_df = pd.Series(lr.coef_[0], index=range(len(lr.coef_[0]))).sort_values(ascending=False)[:20]
 
     coef_map = []
@@ -80,12 +48,14 @@ def map_coef(lr, enc, features, inverse_log):
             total += len(x)
             #print(i, x, total)
        
-
+    numerical = ['time_in_hospital', 'num_lab_procedures', 'num_procedures', 'num_medications', \
+    'number_outpatient', 'number_emergency', 'number_inpatient', 'number_diagnoses']
     coef = {}
+    features = df.columns
     for idx,i,j in coef_map:
         val = enc.categories_[i][j]
         if inverse_log:
-            if ('number' in features[i]) or ('time' in features[i]):
+            if features[i] in numerical:
                 inv_log = int(np.exp(float(val)))
                 key = ('{}_{}'.format(features[i], inv_log))
             else :
@@ -201,6 +171,17 @@ def group_emergency(x):
         return '0'
     else:
         return '1'
+
+def down_sampling(df, target, sampling_ratio):
+    np.random.seed(10)
+    no_readmit_indices = target[target==0].index
+    readmits = int(len(target[target==1])*sampling_ratio)
+    readmit_indices = target[target==1].index
+    random_indices = np.random.choice(no_readmit_indices, readmits, replace=False)
+    under_sample_indices = np.concatenate([readmit_indices, random_indices])
+    X = df.loc[under_sample_indices] 
+    y = target[under_sample_indices]
+    return X, y
         
 def get_data(filePath, labelEncode=False, groupInpatient=False, skewness=False):
     
@@ -221,15 +202,17 @@ def get_data(filePath, labelEncode=False, groupInpatient=False, skewness=False):
     data.drop(columns=['encounter_id', 'patient_nbr', 'weight', 'payer_code'], inplace=True)
     
     # regroup some variables
-    #data['age'] = data['age'].apply(group_age)
-    #data['diabetic'] = data[['diag_1', 'diag_2', 'diag_3']].apply(group_diabet, axis=1)
-    data.drop(columns=['diag_1', 'diag_2', 'diag_3'], inplace=True)
-    #data['discharge_disposition_id'] = data['discharge_disposition_id'].apply(group_discharge)
-    #data['race'] = data['race'].apply(group_race)
-    #data['admission_source_id'] = data['admission_source_id'].apply(group_admission)
-    #data['medical_specialty'] = data['medical_specialty'].apply(group_specialty)
+    data['age'] = data['age'].apply(group_age)
     data['readmitted'] = data['readmitted'].apply(group_readmitted)
-    #data['number_emergency']  = data['number_emergency'].apply(group_emergency)
+
+    data['diabetic'] = data[['diag_1', 'diag_2', 'diag_3']].apply(group_diabet, axis=1)
+    data.drop(columns=['diag_1', 'diag_2', 'diag_3'], inplace=True)
+
+#    data['discharge_disposition_id'] = data['discharge_disposition_id'].apply(group_discharge)
+#    data['race'] = data['race'].apply(group_race)
+#    data['admission_source_id'] = data['admission_source_id'].apply(group_admission)
+#    data['medical_specialty'] = data['medical_specialty'].apply(group_specialty)
+#    data['number_emergency']  = data['number_emergency'].apply(group_emergency)
 
     # convert to categorical
     data[['admission_type_id','discharge_disposition_id','admission_source_id']] = \
