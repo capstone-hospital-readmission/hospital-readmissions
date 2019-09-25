@@ -30,10 +30,10 @@ def group_diabet(x):
         return 'No'
 
 def map_coef(lr, enc, df, inverse_log):
-    print(lr.coef_.shape)
-    print(sum([len(x) for x in enc.categories_]))
-    print(sum(len(np.unique(df[x])) for x in df.columns))
-    coef_df = pd.Series(lr.coef_[0], index=range(len(lr.coef_[0]))).sort_values(ascending=False)[:20]
+#    print(lr.coef_.shape)
+#    print(sum([len(x) for x in enc.categories_]))
+#    print(sum(len(np.unique(df[x])) for x in df.columns))
+    coef_df = pd.Series(lr.coef_[0], index=range(len(lr.coef_[0]))).sort_values(ascending=False)
 
     coef_map = []
     for j in coef_df.index:
@@ -56,13 +56,15 @@ def map_coef(lr, enc, df, inverse_log):
         val = enc.categories_[i][j]
         if inverse_log:
             if features[i] in numerical:
-                inv_log = int(np.exp(float(val)))
+                inv_log = '{:0.0f}'.format(np.exp(float(val))-1)
                 key = ('{}_{}'.format(features[i], inv_log))
-            else :
-                key = ('{}_{}'.format(features[i], val))
+            elif features[i] in ['discharge_disposition_id'] :  # value index starts at 1
+                key = ('{}_{}'.format(features[i], int(val)+1))
+            else:
+                key = ('{}_{}'.format(features[i], int(val)))
             #print(key)
         else:
-            key = ('{}_{}'.format(features[i], val))
+            key = ('{}_{}'.format(features[i], int(val)))
 
         value = coef_df[idx]
         coef[key] = value

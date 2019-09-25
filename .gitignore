@@ -39,3 +39,9 @@ readmission_undersampling.Rmd
 readmission_undersampling.nb.html
 roc.png
 under_sampling.ipynb
+Capture.PNG
+grd_lr1.csv
+gridsearch.PNG
+lr1.csv
+lr_coef.png
+under_sampling_training.png
