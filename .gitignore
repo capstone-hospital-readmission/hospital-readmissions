@@ -45,3 +45,7 @@ gridsearch.PNG
 lr1.csv
 lr_coef.png
 under_sampling_training.png
+hospital_readmission_reduce.ipynb
+hospital_readmission_tree.ipynb
+hospital_readmissions.ipynb
+hospital_readmissions3.ipynb 
